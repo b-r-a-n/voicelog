@@ -57,7 +57,6 @@ struct SettingsView: View {
                     .accessibilityIdentifier("signout_button")
                 }
             }
-            .accessibilityIdentifier("settings_screen")
             .navigationTitle("Settings")
             .confirmationDialog("Sign Out?", isPresented: $showLogoutConfirmation) {
                 Button("Sign Out", role: .destructive) {

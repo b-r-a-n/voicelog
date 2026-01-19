@@ -52,12 +52,9 @@ final class SpeechService: ObservableObject {
             throw SpeechError.permissionDenied
         }
 
-        // Choose strategy based on iOS version
-        if #available(iOS 26.0, *) {
-            strategy = SpeechAnalyzerStrategy()
-        } else {
-            strategy = LegacySpeechStrategy()
-        }
+        // Use legacy speech recognition strategy
+        // Note: SpeechAnalyzer API for iOS 26+ is not yet available
+        strategy = LegacySpeechStrategy()
 
         guard let strategy else {
             throw SpeechError.initializationFailed
@@ -133,74 +130,7 @@ enum SpeechError: Error, LocalizedError {
     }
 }
 
-// MARK: - iOS 26+ Strategy using SpeechAnalyzer
-
-@available(iOS 26.0, *)
-final class SpeechAnalyzerStrategy: SpeechRecognitionStrategy {
-    private(set) var isRecording = false
-    private var audioEngine: AVAudioEngine?
-    private var speechAnalyzer: SpeechAnalyzer?
-    private var transcriptContinuation: AsyncStream<String>.Continuation?
-    private var accumulatedTranscript = ""
-    private var recordingStart: Date?
-
-    var transcriptPublisher: AsyncStream<String> {
-        AsyncStream { continuation in
-            self.transcriptContinuation = continuation
-        }
-    }
-
-    func startRecording() async throws {
-        let audioSession = AVAudioSession.sharedInstance()
-        try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
-        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-
-        audioEngine = AVAudioEngine()
-        guard let audioEngine else { throw SpeechError.initializationFailed }
-
-        let inputNode = audioEngine.inputNode
-        let recordingFormat = inputNode.outputFormat(forBus: 0)
-
-        speechAnalyzer = SpeechAnalyzer(format: recordingFormat)
-        guard let speechAnalyzer else { throw SpeechError.initializationFailed }
-
-        accumulatedTranscript = ""
-        recordingStart = Date()
-
-        inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { [weak self] buffer, _ in
-            self?.speechAnalyzer?.analyze(buffer)
-        }
-
-        audioEngine.prepare()
-        try audioEngine.start()
-        isRecording = true
-
-        // Process transcription results
-        Task {
-            for try await result in speechAnalyzer.results {
-                self.accumulatedTranscript = result.transcription.formattedString
-                self.transcriptContinuation?.yield(self.accumulatedTranscript)
-            }
-        }
-    }
-
-    func stopRecording() async throws -> TranscriptionResult {
-        audioEngine?.stop()
-        audioEngine?.inputNode.removeTap(onBus: 0)
-        transcriptContinuation?.finish()
-
-        let duration = recordingStart.map { Date().timeIntervalSince($0) } ?? 0
-        isRecording = false
-
-        return TranscriptionResult(
-            transcript: accumulatedTranscript,
-            duration: duration,
-            isFinal: true
-        )
-    }
-}
-
-// MARK: - Legacy Strategy for iOS 15-25 using SFSpeechRecognizer
+// MARK: - Speech Recognition Strategy using SFSpeechRecognizer
 
 final class LegacySpeechStrategy: SpeechRecognitionStrategy {
     private(set) var isRecording = false

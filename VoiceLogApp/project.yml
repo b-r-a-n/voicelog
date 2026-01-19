@@ -14,6 +14,7 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.voicelog.VoiceLogApp
+        GENERATE_INFOPLIST_FILE: true
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "VoiceLog needs microphone access to record voice notes"
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "VoiceLog uses speech recognition to transcribe your voice notes"
         INFOPLIST_KEY_UILaunchScreen_Generation: true

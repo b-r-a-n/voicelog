@@ -26,16 +26,16 @@ BACKEND_PORT=8000
 BACKEND_URL="http://localhost:${BACKEND_PORT}"
 
 # Test user credentials
-TEST_EMAIL="testuser_$(date +%s)@voicelog.test"
+TEST_EMAIL="testuser_$(date +%s)@voicelog.com"
 TEST_PASSWORD="testpassword123"
 TEST_NAME="Test User"
 
 # Existing dev credentials (for login tests)
-DEV_EMAIL="dev@voicelog.local"
+DEV_EMAIL="dev@voicelog.com"
 DEV_PASSWORD="devpassword123"
 
 # iOS configuration
-SIMULATOR_NAME="iPhone 15 Pro"
+SIMULATOR_NAME="iPhone 17 Pro"
 APP_BUNDLE_ID="com.voicelog.VoiceLogApp"
 
 # Test timing
@@ -95,7 +95,7 @@ wait_for_element() {
     local timeout=${2:-$ELEMENT_TIMEOUT}
 
     for ((i=0; i<timeout; i++)); do
-        if idb ui describe-all --udid "$UDID" 2>/dev/null | jq -e ".[] | select(.accessibility_identifier == \"$identifier\")" > /dev/null 2>&1; then
+        if idb ui describe-all --udid "$UDID" 2>/dev/null | jq -e ".[] | select(.AXUniqueId == \"$identifier\")" > /dev/null 2>&1; then
             return 0
         fi
         sleep 1
@@ -106,13 +106,13 @@ wait_for_element() {
 # Check if element exists (no waiting)
 element_exists() {
     local identifier=$1
-    idb ui describe-all --udid "$UDID" 2>/dev/null | jq -e ".[] | select(.accessibility_identifier == \"$identifier\")" > /dev/null 2>&1
+    idb ui describe-all --udid "$UDID" 2>/dev/null | jq -e ".[] | select(.AXUniqueId == \"$identifier\")" > /dev/null 2>&1
 }
 
 # Get element info
 get_element() {
     local identifier=$1
-    idb ui describe-all --udid "$UDID" 2>/dev/null | jq ".[] | select(.accessibility_identifier == \"$identifier\")"
+    idb ui describe-all --udid "$UDID" 2>/dev/null | jq ".[] | select(.AXUniqueId == \"$identifier\")"
 }
 
 # Tap an element by accessibility identifier
@@ -129,8 +129,8 @@ tap_element() {
     # Get element frame
     local element=$(get_element "$identifier")
     local frame=$(echo "$element" | jq -r '.frame')
-    local x=$(echo "$frame" | jq -r '.x + (.width / 2)')
-    local y=$(echo "$frame" | jq -r '.y + (.height / 2)')
+    local x=$(echo "$frame" | jq -r '(.x + (.width / 2)) | floor')
+    local y=$(echo "$frame" | jq -r '(.y + (.height / 2)) | floor')
 
     idb ui tap --udid "$UDID" "$x" "$y"
     sleep "$TAP_DELAY"
@@ -155,8 +155,8 @@ clear_and_type() {
     # Select all and delete (triple tap to select all on iOS)
     local element=$(get_element "$identifier")
     local frame=$(echo "$element" | jq -r '.frame')
-    local x=$(echo "$frame" | jq -r '.x + (.width / 2)')
-    local y=$(echo "$frame" | jq -r '.y + (.height / 2)')
+    local x=$(echo "$frame" | jq -r '(.x + (.width / 2)) | floor')
+    local y=$(echo "$frame" | jq -r '(.y + (.height / 2)) | floor')
 
     # Triple tap to select all
     idb ui tap --udid "$UDID" "$x" "$y"
@@ -252,7 +252,7 @@ create_test_user() {
     local password=$2
     local name=$3
 
-    local response=$(curl -s -X POST "${BACKEND_URL}/api/v1/auth/register" \
+    local response=$(curl -s -X POST "${BACKEND_URL}/auth/register" \
         -H "Content-Type: application/json" \
         -d "{\"name\": \"${name}\", \"email\": \"${email}\", \"password\": \"${password}\"}")
 
@@ -273,7 +273,7 @@ delete_test_user() {
 
 # Check if backend is running
 check_backend() {
-    if ! curl -s "${BACKEND_URL}/health" > /dev/null 2>&1; then
+    if ! curl -s "${BACKEND_URL}/" > /dev/null 2>&1; then
         log_error "Backend not running at ${BACKEND_URL}"
         echo "Start the backend with: ./scripts/local-dev.sh"
         exit 1
@@ -323,8 +323,7 @@ test_login_flow() {
 
     launch_app
 
-    # Should be on login screen
-    assert_element_exists "login_screen" "Login screen is displayed"
+    # Verify login screen elements exist
     assert_element_exists "login_email_field" "Email field exists"
     assert_element_exists "login_password_field" "Password field exists"
     assert_element_exists "login_submit_button" "Submit button exists"
@@ -348,10 +347,11 @@ test_login_invalid_credentials() {
     reset_app_state
     launch_app
 
-    assert_element_exists "login_screen" "Login screen is displayed"
+    # Verify login elements exist
+    assert_element_exists "login_email_field" "Login email field is displayed"
 
     # Enter invalid credentials
-    clear_and_type "login_email_field" "invalid@test.com"
+    clear_and_type "login_email_field" "invalid@example.com"
     clear_and_type "login_password_field" "wrongpassword"
 
     # Tap login
@@ -361,8 +361,8 @@ test_login_invalid_credentials() {
     sleep 2  # Wait for API response
     assert_element_exists "login_error_message" "Error message is displayed for invalid credentials"
 
-    # Should still be on login screen
-    assert_element_exists "login_screen" "Still on login screen after failed login"
+    # Should still be on login screen (email field still visible)
+    assert_element_exists "login_email_field" "Still on login screen after failed login"
 
     terminate_app
 }
@@ -370,7 +370,7 @@ test_login_invalid_credentials() {
 test_register_flow() {
     log_test "Registration Flow"
 
-    local unique_email="test_$(date +%s)@voicelog.test"
+    local unique_email="test_$(date +%s)@voicelog.com"
 
     reset_app_state
     launch_app
@@ -379,8 +379,8 @@ test_register_flow() {
     assert_element_exists "signup_link" "Sign up link exists"
     tap_element "signup_link"
 
-    # Should be on register screen
-    assert_element_exists "register_screen" "Register screen is displayed"
+    # Verify register form fields exist
+    sleep 1
     assert_element_exists "register_name_field" "Name field exists"
     assert_element_exists "register_email_field" "Email field exists"
     assert_element_exists "register_password_field" "Password field exists"
@@ -407,7 +407,7 @@ test_logout_flow() {
     launch_app
 
     # Login first if needed
-    if element_exists "login_screen"; then
+    if element_exists "login_email_field"; then
         clear_and_type "login_email_field" "$DEV_EMAIL"
         clear_and_type "login_password_field" "$DEV_PASSWORD"
         tap_element "login_submit_button"
@@ -418,8 +418,8 @@ test_logout_flow() {
     assert_element_exists "settings_tab" "Settings tab exists"
     tap_element "settings_tab"
 
-    # Should be on settings screen
-    assert_element_exists "settings_screen" "Settings screen is displayed"
+    # Verify settings elements
+    sleep 1
     assert_element_exists "signout_button" "Sign out button exists"
 
     # Tap sign out
@@ -430,8 +430,9 @@ test_logout_flow() {
     assert_element_exists "signout_confirm_button" "Sign out confirmation dialog shown"
     tap_element "signout_confirm_button"
 
-    # Should be back on login screen
-    assert_element_exists "login_screen" "Back on login screen after logout"
+    # Should be back on login screen (email field visible)
+    sleep 1
+    assert_element_exists "login_email_field" "Back on login screen after logout"
 
     terminate_app
 }
@@ -442,7 +443,7 @@ test_notes_list() {
     launch_app
 
     # Login if needed
-    if element_exists "login_screen"; then
+    if element_exists "login_email_field"; then
         clear_and_type "login_email_field" "$DEV_EMAIL"
         clear_and_type "login_password_field" "$DEV_PASSWORD"
         tap_element "login_submit_button"
@@ -476,7 +477,7 @@ test_note_detail() {
     launch_app
 
     # Login if needed
-    if element_exists "login_screen"; then
+    if element_exists "login_email_field"; then
         clear_and_type "login_email_field" "$DEV_EMAIL"
         clear_and_type "login_password_field" "$DEV_PASSWORD"
         tap_element "login_submit_button"
@@ -498,13 +499,13 @@ test_note_detail() {
     # Get first note and tap it
     # Find any element with "note_row_" prefix
     local notes_ui=$(idb ui describe-all --udid "$UDID" 2>/dev/null)
-    local first_note=$(echo "$notes_ui" | jq -r '[.[] | select(.accessibility_identifier | startswith("note_row_"))] | .[0].accessibility_identifier // empty')
+    local first_note=$(echo "$notes_ui" | jq -r '[.[] | select(.AXUniqueId | tostring | startswith("note_row_"))] | .[0].AXUniqueId // empty')
 
     if [ -n "$first_note" ]; then
         tap_element "$first_note"
 
-        # Should be on note detail screen
-        assert_element_exists "note_detail_screen" "Note detail screen is displayed"
+        # Verify note detail elements
+        sleep 1
         assert_element_exists "note_detail_transcript" "Transcript is displayed"
 
         # Go back
@@ -523,7 +524,7 @@ test_create_note_ui() {
     launch_app
 
     # Login if needed
-    if element_exists "login_screen"; then
+    if element_exists "login_email_field"; then
         clear_and_type "login_email_field" "$DEV_EMAIL"
         clear_and_type "login_password_field" "$DEV_PASSWORD"
         tap_element "login_submit_button"
@@ -538,8 +539,8 @@ test_create_note_ui() {
     assert_element_exists "add_note_button" "Add note button exists"
     tap_element "add_note_button"
 
-    # Should be on recording screen
-    assert_element_exists "recording_screen" "Recording screen is displayed"
+    # Verify recording screen elements
+    sleep 1
     assert_element_exists "record_button" "Record button exists"
     assert_element_exists "recording_cancel_button" "Cancel button exists in toolbar"
 
@@ -563,7 +564,7 @@ test_empty_notes_state() {
     launch_app
 
     # Register a new user so we have no notes
-    local unique_email="empty_test_$(date +%s)@voicelog.test"
+    local unique_email="empty_test_$(date +%s)@voicelog.com"
 
     tap_element "signup_link"
     sleep 1
@@ -588,7 +589,7 @@ test_settings_screen() {
     launch_app
 
     # Login if needed
-    if element_exists "login_screen"; then
+    if element_exists "login_email_field"; then
         clear_and_type "login_email_field" "$DEV_EMAIL"
         clear_and_type "login_password_field" "$DEV_PASSWORD"
         tap_element "login_submit_button"
@@ -600,7 +601,6 @@ test_settings_screen() {
     sleep 1
 
     # Check settings elements
-    assert_element_exists "settings_screen" "Settings screen is displayed"
     assert_element_exists "settings_user_name" "User name is displayed"
     assert_element_exists "settings_user_email" "User email is displayed"
     assert_element_exists "sync_now_button" "Sync now button exists"

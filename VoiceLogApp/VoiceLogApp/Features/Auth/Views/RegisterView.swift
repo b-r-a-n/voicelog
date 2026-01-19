@@ -63,7 +63,6 @@ struct RegisterView: View {
                     .accessibilityIdentifier("register_submit_button")
                 }
             }
-            .accessibilityIdentifier("register_screen")
             .navigationTitle("Create Account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

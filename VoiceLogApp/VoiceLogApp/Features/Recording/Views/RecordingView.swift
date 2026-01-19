@@ -94,7 +94,6 @@ struct RecordingView: View {
                 }
             }
             .padding()
-            .accessibilityIdentifier("recording_screen")
             .navigationTitle("Record")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

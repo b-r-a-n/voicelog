@@ -73,7 +73,6 @@ struct LoginView: View {
             Spacer()
         }
         .padding()
-        .accessibilityIdentifier("login_screen")
     }
 }
 

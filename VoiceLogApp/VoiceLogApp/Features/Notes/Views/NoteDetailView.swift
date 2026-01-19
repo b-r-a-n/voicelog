@@ -68,7 +68,6 @@ struct NoteDetailView: View {
             }
             .padding()
         }
-        .accessibilityIdentifier("note_detail_screen")
         .navigationTitle(viewModel.note.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

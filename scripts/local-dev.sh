@@ -28,12 +28,12 @@ BACKEND_URL="http://localhost:${BACKEND_PORT}"
 DEV_JWT_SECRET="dev-secret-key-for-local-testing-only"
 
 # Dev user credentials
-DEV_EMAIL="dev@voicelog.local"
+DEV_EMAIL="dev@voicelog.com"
 DEV_PASSWORD="devpassword123"
 DEV_NAME="Dev User"
 
 # iOS configuration
-SIMULATOR_NAME="iPhone 15 Pro"
+SIMULATOR_NAME="iPhone 17 Pro"
 APP_BUNDLE_ID="com.voicelog.VoiceLogApp"
 XCODE_PROJECT="${PROJECT_ROOT}/VoiceLogApp/VoiceLogApp.xcodeproj"
 XCODE_SCHEME="VoiceLogApp"
@@ -144,7 +144,7 @@ setup_dev_user() {
     log_info "Setting up dev user account..."
 
     # Check if user already exists by trying to login
-    local login_response=$(curl -s -X POST "${BACKEND_URL}/api/v1/auth/login" \
+    local login_response=$(curl -s -X POST "${BACKEND_URL}/auth/login" \
         -H "Content-Type: application/json" \
         -d "{\"email\": \"${DEV_EMAIL}\", \"password\": \"${DEV_PASSWORD}\"}")
 
@@ -154,7 +154,7 @@ setup_dev_user() {
     fi
 
     # Register new user
-    local register_response=$(curl -s -X POST "${BACKEND_URL}/api/v1/auth/register" \
+    local register_response=$(curl -s -X POST "${BACKEND_URL}/auth/register" \
         -H "Content-Type: application/json" \
         -d "{\"name\": \"${DEV_NAME}\", \"email\": \"${DEV_EMAIL}\", \"password\": \"${DEV_PASSWORD}\"}")
 
