@@ -55,3 +55,17 @@ The IDB-based E2E test scripts are working:
 - `scripts/ios-ui-test.sh` - Runs UI automation tests
 
 Tests will pass once the API response format issue is resolved.
+
+---
+
+## Resolved Issues
+
+### Fixed: Transcript Loss on Session Restart
+
+**Status:** Resolved (2026-01-19)
+
+**Problem:** When dictating for longer than 60 seconds, the speech recognition session would restart (to work around Apple's ~60-second limit), but the previously transcribed text was lost.
+
+**Root Cause:** In `SpeechService.swift`, when `recognitionTask?.cancel()` was called during restart, the old session's callback could still fire asynchronously. If it fired after the new session started, it would overwrite `accumulatedTranscript` using the old `sessionStartTranscript` value.
+
+**Fix:** Added session ID tracking (`currentSessionId`) to ignore callbacks from stale sessions. See commit `7ef8bc9`.
