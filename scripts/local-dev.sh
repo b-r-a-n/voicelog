@@ -281,6 +281,65 @@ launch_app() {
     log_success "App launched"
 }
 
+get_element_center() {
+    local udid=$1
+    local element_id=$2
+
+    # Get UI hierarchy and find element by AXUniqueId
+    local element=$(idb ui describe-all --udid "$udid" 2>/dev/null | \
+        jq -r ".[] | select(.AXUniqueId == \"${element_id}\")")
+
+    if [ -z "$element" ]; then
+        return 1
+    fi
+
+    # Calculate center coordinates from frame (rounded to int)
+    local x=$(echo "$element" | jq -r '.frame.x + (.frame.width / 2) | floor')
+    local y=$(echo "$element" | jq -r '.frame.y + (.frame.height / 2) | floor')
+
+    echo "$x $y"
+}
+
+auto_login() {
+    local udid=$1
+
+    log_info "Logging in with dev credentials..."
+
+    # Wait for app to fully launch and render
+    sleep 3
+
+    # Connect idb to the simulator
+    idb connect "$udid" > /dev/null 2>&1 || true
+
+    # Get email field coordinates
+    local email_coords=$(get_element_center "$udid" "login_email_field")
+    if [ -z "$email_coords" ]; then
+        log_warn "Could not find login screen - may already be logged in"
+        return 0
+    fi
+
+    # Tap email field and enter email
+    idb ui tap --udid "$udid" $email_coords
+    sleep 0.5
+    idb ui text --udid "$udid" "${DEV_EMAIL}"
+    sleep 0.3
+
+    # Get password field coordinates and tap
+    local password_coords=$(get_element_center "$udid" "login_password_field")
+    idb ui tap --udid "$udid" $password_coords
+    sleep 0.5
+    idb ui text --udid "$udid" "${DEV_PASSWORD}"
+    sleep 0.3
+
+    # Get submit button coordinates and tap
+    local submit_coords=$(get_element_center "$udid" "login_submit_button")
+    idb ui tap --udid "$udid" $submit_coords
+
+    # Wait for login to complete
+    sleep 2
+    log_success "Logged in as ${DEV_EMAIL}"
+}
+
 # ============================================================================
 # Main
 # ============================================================================
@@ -292,10 +351,7 @@ print_credentials() {
     echo -e "${GREEN}============================================${NC}"
     echo ""
     echo -e "  Backend URL: ${BLUE}${BACKEND_URL}${NC}"
-    echo ""
-    echo -e "  ${YELLOW}Dev Login Credentials:${NC}"
-    echo -e "  Email:    ${BLUE}${DEV_EMAIL}${NC}"
-    echo -e "  Password: ${BLUE}${DEV_PASSWORD}${NC}"
+    echo -e "  Logged in as: ${BLUE}${DEV_EMAIL}${NC}"
     echo ""
     echo -e "  Press Ctrl+C to stop the backend server."
     echo ""
@@ -326,6 +382,7 @@ main() {
     local udid=$(boot_simulator)
     build_and_install_app "$udid"
     launch_app "$udid"
+    auto_login "$udid"
 
     print_credentials
 
