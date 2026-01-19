@@ -180,15 +180,15 @@ setup_dev_user() {
 # ============================================================================
 
 boot_simulator() {
-    log_info "Booting iOS simulator..."
+    log_info "Booting iOS simulator..." >&2
 
     # Get simulator UDID
     local udid=$(xcrun simctl list devices available -j | jq -r ".devices | to_entries[] | .value[] | select(.name == \"${SIMULATOR_NAME}\") | .udid" | head -1)
 
     if [ -z "$udid" ]; then
-        log_error "Simulator '${SIMULATOR_NAME}' not found"
-        echo "Available simulators:"
-        xcrun simctl list devices available | grep -E "iPhone|iPad"
+        log_error "Simulator '${SIMULATOR_NAME}' not found" >&2
+        echo "Available simulators:" >&2
+        xcrun simctl list devices available | grep -E "iPhone|iPad" >&2
         exit 1
     fi
 
@@ -196,10 +196,10 @@ boot_simulator() {
     local state=$(xcrun simctl list devices -j | jq -r ".devices | to_entries[] | .value[] | select(.udid == \"${udid}\") | .state")
 
     if [ "$state" == "Booted" ]; then
-        log_success "Simulator already booted"
+        log_success "Simulator already booted" >&2
     else
         xcrun simctl boot "$udid"
-        log_success "Simulator booted"
+        log_success "Simulator booted" >&2
     fi
 
     # Open Simulator app
