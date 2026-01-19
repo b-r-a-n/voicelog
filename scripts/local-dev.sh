@@ -165,8 +165,13 @@ setup_dev_user() {
         log_success "Dev user created"
     else
         local error=$(echo "$register_response" | jq -r '.detail // "Unknown error"')
-        log_error "Failed to create dev user: ${error}"
-        exit 1
+        # "Email already registered" means user exists - that's fine
+        if [[ "$error" == *"already registered"* ]]; then
+            log_success "Dev user already exists"
+        else
+            log_error "Failed to create dev user: ${error}"
+            exit 1
+        fi
     fi
 }
 
