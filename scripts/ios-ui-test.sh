@@ -21,6 +21,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Source centralized build configuration
+source "${SCRIPT_DIR}/build-config.sh"
+
 # Backend configuration
 BACKEND_PORT=8000
 BACKEND_URL="http://localhost:${BACKEND_PORT}"
@@ -83,6 +86,35 @@ log_test() {
 # Get simulator UDID
 get_simulator_udid() {
     xcrun simctl list devices available -j | jq -r ".devices | to_entries[] | .value[] | select(.name == \"${SIMULATOR_NAME}\" and .state == \"Booted\") | .udid" | head -1
+}
+
+# Validate that the app build exists and is usable
+validate_build() {
+    local app_path="$1"
+
+    if [ ! -d "$app_path" ]; then
+        log_error "App not found: $app_path"
+        log_error "Build the app with:"
+        log_error "  cd VoiceLogApp && xcodebuild -project VoiceLogApp.xcodeproj -scheme VoiceLogApp -sdk iphonesimulator -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -configuration Debug -derivedDataPath ./build build"
+        return 1
+    fi
+
+    if [ ! -f "$app_path/VoiceLogApp" ]; then
+        log_error "Invalid app bundle - missing executable at: $app_path/VoiceLogApp"
+        return 1
+    fi
+
+    # Show build info
+    local build_time=$(stat -f %m "$app_path")
+    local build_age=$(($(date +%s) - build_time))
+    local build_date=$(date -r "$build_time" '+%Y-%m-%d %H:%M:%S')
+    log_info "Build timestamp: $build_date"
+
+    if [ $build_age -gt 3600 ]; then
+        log_warn "Build is $((build_age/60)) minutes old - consider rebuilding"
+    fi
+
+    return 0
 }
 
 # ============================================================================
@@ -304,14 +336,16 @@ reset_app_state() {
     # Remove app data
     xcrun simctl uninstall "$UDID" "$APP_BUNDLE_ID" 2>/dev/null || true
 
-    # Reinstall app
-    local app_path=$(find "${PROJECT_ROOT}/VoiceLogApp/build" -name "*.app" -type d | head -1)
-    if [ -n "$app_path" ]; then
-        xcrun simctl install "$UDID" "$app_path"
-    else
-        log_error "App not found. Run ./scripts/local-dev.sh first."
+    # Use explicit path from build-config.sh instead of find
+    local app_path="$VOICELOG_APP_PATH"
+
+    if ! validate_build "$app_path"; then
+        log_error "Cannot reset app state - build validation failed"
         exit 1
     fi
+
+    log_info "Installing app from: $app_path"
+    xcrun simctl install "$UDID" "$app_path"
 }
 
 # ============================================================================
@@ -712,6 +746,21 @@ cleanup() {
     terminate_app 2>/dev/null || true
 }
 
+print_header() {
+    local app_path="$VOICELOG_APP_PATH"
+    local build_info="unknown"
+
+    if [ -d "$app_path" ]; then
+        local build_time=$(stat -f %m "$app_path")
+        build_info=$(date -r "$build_time" '+%Y-%m-%d %H:%M:%S')
+    fi
+
+    echo ""
+    echo -e "${BLUE}VoiceLog iOS UI Test Suite${NC}"
+    echo -e "${BLUE}Build: ${build_info}${NC}"
+    echo -e "${BLUE}Simulator: ${SIMULATOR_NAME} (${UDID})${NC}"
+}
+
 # ============================================================================
 # Main
 # ============================================================================
@@ -755,9 +804,7 @@ main() {
             exit 0
             ;;
         all)
-            echo ""
-            echo -e "${BLUE}VoiceLog iOS UI Test Suite${NC}"
-            echo -e "${BLUE}Simulator: ${SIMULATOR_NAME} (${UDID})${NC}"
+            print_header
             run_all_tests
             print_results
             exit $TESTS_FAILED
@@ -767,9 +814,7 @@ main() {
             exit 0
             ;;
         *)
-            echo ""
-            echo -e "${BLUE}VoiceLog iOS UI Test Suite${NC}"
-            echo -e "${BLUE}Simulator: ${SIMULATOR_NAME} (${UDID})${NC}"
+            print_header
             run_test "$1"
             print_results
             exit $TESTS_FAILED

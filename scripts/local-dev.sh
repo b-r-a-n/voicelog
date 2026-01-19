@@ -22,6 +22,9 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
+# Source centralized build configuration
+source "${SCRIPT_DIR}/build-config.sh"
+
 # Backend configuration
 BACKEND_PORT=8000
 BACKEND_URL="http://localhost:${BACKEND_PORT}"
@@ -233,34 +236,34 @@ build_and_install_app() {
 
     cd "${PROJECT_ROOT}/VoiceLogApp"
 
-    # Build for simulator
+    # Build for simulator using centralized derivedDataPath from build-config.sh
     xcodebuild \
         -project VoiceLogApp.xcodeproj \
         -scheme "${XCODE_SCHEME}" \
         -sdk iphonesimulator \
         -destination "id=${udid}" \
         -configuration Debug \
-        -derivedDataPath build \
+        -derivedDataPath "${VOICELOG_DERIVED_DATA}" \
         build 2>&1 | xcbeautify || xcodebuild \
         -project VoiceLogApp.xcodeproj \
         -scheme "${XCODE_SCHEME}" \
         -sdk iphonesimulator \
         -destination "id=${udid}" \
         -configuration Debug \
-        -derivedDataPath build \
+        -derivedDataPath "${VOICELOG_DERIVED_DATA}" \
         build
 
     log_success "App built"
 
-    # Find and install the app
-    local app_path=$(find build -name "*.app" -type d | head -1)
+    # Use explicit app path from build-config.sh instead of find
+    local app_path="$VOICELOG_APP_PATH"
 
-    if [ -z "$app_path" ]; then
-        log_error "Built app not found"
+    if [ ! -d "$app_path" ]; then
+        log_error "Built app not found at: $app_path"
         exit 1
     fi
 
-    log_info "Installing app..."
+    log_info "Installing app from: $app_path"
     xcrun simctl install "$udid" "$app_path"
     log_success "App installed"
 }
