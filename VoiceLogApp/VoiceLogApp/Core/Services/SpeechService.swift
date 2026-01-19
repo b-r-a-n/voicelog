@@ -147,6 +147,7 @@ final class LegacySpeechStrategy: SpeechRecognitionStrategy {
     private let maxSessionDuration: TimeInterval = 55  // ~55 seconds before session limit
     private var sessionRestartTask: Task<Void, Never>?
     private var isRestarting = false  // Guard against concurrent restarts
+    private var currentSessionId = 0  // Track session to ignore stale callbacks
 
     var transcriptPublisher: AsyncStream<String> {
         AsyncStream { continuation in
@@ -195,10 +196,15 @@ final class LegacySpeechStrategy: SpeechRecognitionStrategy {
         try audioEngine.start()
         sessionStartTime = Date()
 
+        currentSessionId += 1
+        let thisSessionId = currentSessionId
         let sessionStartTranscript = accumulatedTranscript
 
         recognitionTask = speechRecognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
             guard let self else { return }
+
+            // Ignore callbacks from stale sessions (fixes transcript loss on restart)
+            guard thisSessionId == self.currentSessionId else { return }
 
             if let result {
                 let newText = result.bestTranscription.formattedString
