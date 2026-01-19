@@ -146,6 +146,7 @@ final class LegacySpeechStrategy: SpeechRecognitionStrategy {
     private var sessionStartTime: Date?
     private let maxSessionDuration: TimeInterval = 55  // ~55 seconds before session limit
     private var sessionRestartTask: Task<Void, Never>?
+    private var isRestarting = false  // Guard against concurrent restarts
 
     var transcriptPublisher: AsyncStream<String> {
         AsyncStream { continuation in
@@ -210,6 +211,7 @@ final class LegacySpeechStrategy: SpeechRecognitionStrategy {
             if error != nil || result?.isFinal == true {
                 // Session ended, restart if still recording
                 if self.isRecording {
+                    self.sessionRestartTask?.cancel()  // Cancel scheduled restart
                     Task {
                         try? await self.restartSession()
                     }
@@ -228,8 +230,14 @@ final class LegacySpeechStrategy: SpeechRecognitionStrategy {
     }
 
     private func restartSession() async throws {
+        guard !isRestarting else { return }  // Prevent concurrent restarts
+        isRestarting = true
+        defer { isRestarting = false }
+
+        sessionRestartTask?.cancel()
         recognitionTask?.cancel()
         recognitionRequest?.endAudio()
+        audioEngine?.stop()  // Stop engine before removing tap
         audioEngine?.inputNode.removeTap(onBus: 0)
 
         // Small delay to allow cleanup
