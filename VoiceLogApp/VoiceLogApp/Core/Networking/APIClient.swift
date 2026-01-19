@@ -19,10 +19,7 @@ actor APIClient {
         self.keychainManager = keychainManager
 
         self.decoder = JSONDecoder()
-        self.decoder.dateDecodingStrategy = .iso8601
-
         self.encoder = JSONEncoder()
-        self.encoder.dateEncodingStrategy = .iso8601
     }
 
     // MARK: - Public API
