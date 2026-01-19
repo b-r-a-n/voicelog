@@ -9,11 +9,13 @@ struct MainTabView: View {
                 .tabItem {
                     Label("Notes", systemImage: "doc.text")
                 }
+                .accessibilityIdentifier("notes_tab")
 
             SettingsView(authService: authService)
                 .tabItem {
                     Label("Settings", systemImage: "gear")
                 }
+                .accessibilityIdentifier("settings_tab")
         }
     }
 }

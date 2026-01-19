@@ -17,9 +17,11 @@ struct SettingsView: View {
                             VStack(alignment: .leading) {
                                 Text(user.name)
                                     .font(.headline)
+                                    .accessibilityIdentifier("settings_user_name")
                                 Text(user.email)
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
+                                    .accessibilityIdentifier("settings_user_email")
                             }
                         }
                         .padding(.vertical, 8)
@@ -34,6 +36,7 @@ struct SettingsView: View {
                     } label: {
                         Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
                     }
+                    .accessibilityIdentifier("sync_now_button")
                 }
 
                 Section("About") {
@@ -51,8 +54,10 @@ struct SettingsView: View {
                     } label: {
                         Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
                     }
+                    .accessibilityIdentifier("signout_button")
                 }
             }
+            .accessibilityIdentifier("settings_screen")
             .navigationTitle("Settings")
             .confirmationDialog("Sign Out?", isPresented: $showLogoutConfirmation) {
                 Button("Sign Out", role: .destructive) {
@@ -60,6 +65,7 @@ struct SettingsView: View {
                         await authService.logout()
                     }
                 }
+                .accessibilityIdentifier("signout_confirm_button")
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("Are you sure you want to sign out? Your notes will remain on the server.")

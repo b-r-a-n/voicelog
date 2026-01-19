@@ -30,16 +30,19 @@ struct LoginView: View {
                     .textContentType(.emailAddress)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.emailAddress)
+                    .accessibilityIdentifier("login_email_field")
 
                 SecureField("Password", text: $viewModel.password)
                     .textFieldStyle(.roundedBorder)
                     .textContentType(.password)
+                    .accessibilityIdentifier("login_password_field")
 
                 if let error = viewModel.errorMessage {
                     Text(error)
                         .font(.caption)
                         .foregroundStyle(.red)
                         .multilineTextAlignment(.center)
+                        .accessibilityIdentifier("login_error_message")
                 }
 
                 Button {
@@ -57,6 +60,7 @@ struct LoginView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(!viewModel.isFormValid || viewModel.isLoading)
+                .accessibilityIdentifier("login_submit_button")
             }
             .padding(.horizontal)
 
@@ -64,10 +68,12 @@ struct LoginView: View {
                 showRegister = true
             }
             .font(.subheadline)
+            .accessibilityIdentifier("signup_link")
 
             Spacer()
         }
         .padding()
+        .accessibilityIdentifier("login_screen")
     }
 }
 

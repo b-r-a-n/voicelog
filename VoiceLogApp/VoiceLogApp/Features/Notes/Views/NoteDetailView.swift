@@ -33,6 +33,7 @@ struct NoteDetailView: View {
 
                         Text(summary)
                             .font(.body)
+                            .accessibilityIdentifier("note_detail_summary")
                     }
 
                     Divider()
@@ -46,6 +47,7 @@ struct NoteDetailView: View {
                     Text(viewModel.transcript)
                         .font(.body)
                         .textSelection(.enabled)
+                        .accessibilityIdentifier("note_detail_transcript")
                 }
 
                 // Tags
@@ -66,6 +68,7 @@ struct NoteDetailView: View {
             }
             .padding()
         }
+        .accessibilityIdentifier("note_detail_screen")
         .navigationTitle(viewModel.note.title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

@@ -11,6 +11,7 @@ struct RecordingView: View {
                 Text(viewModel.formattedDuration)
                     .font(.system(size: 64, weight: .thin, design: .monospaced))
                     .foregroundStyle(viewModel.isRecording ? .red : .primary)
+                    .accessibilityIdentifier("recording_duration")
 
                 // Transcript preview
                 ScrollView {
@@ -21,6 +22,7 @@ struct RecordingView: View {
                         .foregroundStyle(viewModel.currentTranscript.isEmpty ? .secondary : .primary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding()
+                        .accessibilityIdentifier("recording_transcript_preview")
                 }
                 .background(Color(.systemGray6))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -35,6 +37,7 @@ struct RecordingView: View {
                                 .font(.system(size: 44))
                                 .foregroundStyle(.gray)
                         }
+                        .accessibilityIdentifier("cancel_button")
 
                         Button {
                             Task {
@@ -45,6 +48,7 @@ struct RecordingView: View {
                                 .font(.system(size: 72))
                                 .foregroundStyle(.red)
                         }
+                        .accessibilityIdentifier("stop_button")
                     } else {
                         Button {
                             Task {
@@ -55,6 +59,7 @@ struct RecordingView: View {
                                 .font(.system(size: 72))
                                 .foregroundStyle(.blue)
                         }
+                        .accessibilityIdentifier("record_button")
                     }
                 }
                 .padding(.vertical)
@@ -67,6 +72,7 @@ struct RecordingView: View {
 
                         TextField("Note title", text: $viewModel.title)
                             .textFieldStyle(.roundedBorder)
+                            .accessibilityIdentifier("note_title_field")
                     }
 
                     Button {
@@ -84,9 +90,11 @@ struct RecordingView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .disabled(!viewModel.canSave || viewModel.isSaving)
+                    .accessibilityIdentifier("save_note_button")
                 }
             }
             .padding()
+            .accessibilityIdentifier("recording_screen")
             .navigationTitle("Record")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -95,6 +103,7 @@ struct RecordingView: View {
                         viewModel.cancelRecording()
                         dismiss()
                     }
+                    .accessibilityIdentifier("recording_cancel_button")
                 }
             }
             .alert("Error", isPresented: .init(

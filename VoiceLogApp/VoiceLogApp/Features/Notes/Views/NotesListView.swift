@@ -15,12 +15,14 @@ struct NotesListView: View {
                         systemImage: "doc.text",
                         description: Text("Tap the + button to create your first voice note")
                     )
+                    .accessibilityIdentifier("empty_notes_view")
                 } else {
                     List {
                         ForEach(viewModel.notes) { note in
                             NavigationLink(value: note) {
                                 NoteRowView(note: note)
                             }
+                            .accessibilityIdentifier("note_row_\(note.title.lowercased().replacingOccurrences(of: " ", with: "_"))")
                         }
                         .onDelete { indexSet in
                             Task {
@@ -30,6 +32,7 @@ struct NotesListView: View {
                             }
                         }
                     }
+                    .accessibilityIdentifier("notes_list")
                     .refreshable {
                         await viewModel.syncNotes()
                     }
@@ -46,6 +49,7 @@ struct NotesListView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
+                    .accessibilityIdentifier("add_note_button")
                 }
 
                 if viewModel.isSyncing {
