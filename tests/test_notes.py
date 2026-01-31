@@ -1,4 +1,5 @@
 import pytest
+from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 
@@ -115,3 +116,98 @@ def test_note_unauthorized(client: TestClient):
 def test_note_not_found(client: TestClient, auth_headers: dict):
     response = client.get("/notes/99999", headers=auth_headers)
     assert response.status_code == 404
+
+
+def test_summarize_note_success(client: TestClient, auth_headers: dict):
+    """Test successful note summarization with mocked LLM."""
+    # Create a note with transcript
+    create_response = client.post(
+        "/notes/",
+        headers=auth_headers,
+        json={
+            "title": "Test Note for Summary",
+            "transcript": "This is a test transcript that should be summarized.",
+            "duration": 60.0
+        }
+    )
+    note_id = create_response.json()["id"]
+
+    # Mock the LLM service to return a fixed summary
+    with patch("app.services.llm_service.llm_service.summarize", new_callable=AsyncMock) as mock_summarize:
+        mock_summarize.return_value = "This is a mock summary of the transcript."
+
+        response = client.post(
+            f"/notes/{note_id}/summarize",
+            headers=auth_headers,
+            json={}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["summary"] == "This is a mock summary of the transcript."
+        assert data["id"] == note_id
+        mock_summarize.assert_called_once()
+
+
+def test_summarize_note_empty_transcript(client: TestClient, auth_headers: dict):
+    """Test summarization fails with empty transcript."""
+    # Create a note with empty transcript
+    create_response = client.post(
+        "/notes/",
+        headers=auth_headers,
+        json={
+            "title": "Note with No Transcript",
+            "transcript": "",
+            "duration": 0.0
+        }
+    )
+    note_id = create_response.json()["id"]
+
+    response = client.post(
+        f"/notes/{note_id}/summarize",
+        headers=auth_headers,
+        json={}
+    )
+
+    assert response.status_code == 400
+    assert "no transcript" in response.json()["detail"].lower()
+
+
+def test_summarize_note_not_found(client: TestClient, auth_headers: dict):
+    """Test summarization fails with non-existent note ID."""
+    response = client.post(
+        "/notes/99999/summarize",
+        headers=auth_headers,
+        json={}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Note not found"
+
+
+def test_summarize_note_deleted(client: TestClient, auth_headers: dict):
+    """Test summarization fails for deleted note."""
+    # Create a note
+    create_response = client.post(
+        "/notes/",
+        headers=auth_headers,
+        json={
+            "title": "Note to Delete",
+            "transcript": "This note will be deleted.",
+            "duration": 30.0
+        }
+    )
+    note_id = create_response.json()["id"]
+
+    # Delete the note
+    client.delete(f"/notes/{note_id}", headers=auth_headers)
+
+    # Try to summarize the deleted note
+    response = client.post(
+        f"/notes/{note_id}/summarize",
+        headers=auth_headers,
+        json={}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Note not found"
