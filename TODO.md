@@ -21,6 +21,11 @@ The iOS app cannot parse API responses from the backend for login and registrati
 2. Check if the backend returns the expected fields (`access_token`, `user`, etc.)
 3. Verify JSON field naming conventions match (snake_case vs camelCase)
 
+**Investigation Complete - Date Parsing:**
+- Backend datetime format: `2026-01-31T11:20:43` (ISO8601, no timezone, no fractional seconds)
+- iOS `DateParsing.swift` handles this via `plainDateTime` formatter (fallback on line 34)
+- **Date parsing is NOT the root cause** - formats are compatible
+
 **Backend Response Example:**
 ```json
 {
