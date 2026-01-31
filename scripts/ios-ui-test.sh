@@ -756,6 +756,141 @@ test_summarize() {
     terminate_app
 }
 
+test_export() {
+    log_test "Export Flow - Export Note as PDF"
+
+    launch_app
+
+    # Login if needed
+    if element_exists "login_email_field"; then
+        clear_and_type "login_email_field" "$DEV_EMAIL"
+        clear_and_type "login_password_field" "$DEV_PASSWORD"
+        tap_element "login_submit_button"
+        sleep 2
+    fi
+
+    # Navigate to notes
+    tap_element "notes_tab"
+    sleep 2
+
+    # Check if there are any notes
+    if element_exists "empty_notes_view"; then
+        log_warn "No notes available - skipping export test"
+        log_warn "Create a note to test export functionality"
+        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+        terminate_app
+        return 0
+    fi
+
+    # Get first note and tap it
+    local notes_ui=$(idb ui describe-all --udid "$UDID" 2>/dev/null)
+    local first_note=$(echo "$notes_ui" | jq -r '[.[] | select(.AXUniqueId | tostring | startswith("note_row_"))] | .[0].AXUniqueId // empty')
+
+    if [ -z "$first_note" ]; then
+        log_warn "No notes found in list - skipping export test"
+        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+        terminate_app
+        return 0
+    fi
+
+    tap_element "$first_note"
+    sleep 1
+
+    # Verify we're on note detail
+    assert_element_exists "note_detail_transcript" "Note detail transcript is displayed"
+
+    # Open the menu
+    assert_element_exists "note_detail_menu_button" "Menu button exists"
+    tap_element "note_detail_menu_button"
+    sleep 0.5
+
+    # Find and tap "Export as PDF" in the menu
+    local menu_ui=$(idb ui describe-all --udid "$UDID" 2>/dev/null)
+    local export_button=$(echo "$menu_ui" | jq -r '[.[] | select(.label == "Export as PDF" or .AXUniqueId == "export_pdf_button")] | .[0]')
+
+    if [ -z "$export_button" ] || [ "$export_button" = "null" ]; then
+        log_error "Export as PDF button not found in menu"
+        take_screenshot "export_menu_missing"
+        terminate_app
+        return 1
+    fi
+
+    # Get coordinates and tap
+    local frame=$(echo "$export_button" | jq -r '.frame')
+    local x=$(echo "$frame" | jq -r '(.x + (.width / 2)) | floor')
+    local y=$(echo "$frame" | jq -r '(.y + (.height / 2)) | floor')
+
+    log_info "Tapping 'Export as PDF' at ($x, $y)..."
+    idb ui tap --udid "$UDID" "$x" "$y"
+    sleep 1
+
+    # Wait for share sheet to appear
+    # The share sheet may have accessibility ID "export_share_sheet" or be a system UIActivityViewController
+    local share_timeout=15
+    log_info "Waiting for share sheet to appear (up to ${share_timeout}s)..."
+
+    local share_found=false
+    for ((i=0; i<share_timeout; i++)); do
+        # Check if loading indicator is visible
+        if element_exists "note_detail_loading"; then
+            log_info "Export in progress..."
+        fi
+
+        # Check for our custom share sheet ID or system share sheet
+        local current_ui=$(idb ui describe-all --udid "$UDID" 2>/dev/null)
+
+        # Look for export_share_sheet or UIActivityViewController elements
+        if echo "$current_ui" | jq -e '.[] | select(.AXUniqueId == "export_share_sheet")' > /dev/null 2>&1; then
+            share_found=true
+            log_info "Found share sheet with accessibility ID"
+            break
+        fi
+
+        # Also check for system share sheet indicators (Close button, Copy, etc.)
+        if echo "$current_ui" | jq -e '.[] | select(.label == "Close" and .type == "Button")' > /dev/null 2>&1; then
+            # Verify this is likely the share sheet by checking for share-related elements
+            if echo "$current_ui" | jq -e '.[] | select(.label == "Copy" or .label == "Save to Files" or .label == "AirDrop")' > /dev/null 2>&1; then
+                share_found=true
+                log_info "Found system share sheet"
+                break
+            fi
+        fi
+
+        sleep 1
+    done
+
+    if [ "$share_found" = true ]; then
+        log_success "Share sheet appeared - export completed successfully"
+        take_screenshot "export_share_sheet"
+
+        # Dismiss the share sheet by tapping Close or outside
+        local dismiss_ui=$(idb ui describe-all --udid "$UDID" 2>/dev/null)
+        local close_button=$(echo "$dismiss_ui" | jq -r '[.[] | select(.label == "Close" and .type == "Button")] | .[0]')
+
+        if [ -n "$close_button" ] && [ "$close_button" != "null" ]; then
+            local close_frame=$(echo "$close_button" | jq -r '.frame')
+            local close_x=$(echo "$close_frame" | jq -r '(.x + (.width / 2)) | floor')
+            local close_y=$(echo "$close_frame" | jq -r '(.y + (.height / 2)) | floor')
+            log_info "Dismissing share sheet..."
+            idb ui tap --udid "$UDID" "$close_x" "$close_y"
+            sleep 0.5
+        fi
+    else
+        log_error "Share sheet did not appear within ${share_timeout} seconds"
+        take_screenshot "export_timeout"
+        terminate_app
+        return 1
+    fi
+
+    # Verify we're back on note detail (no errors shown)
+    sleep 1
+    if element_exists "note_detail_transcript"; then
+        log_success "Returned to note detail after export"
+    fi
+
+    terminate_app
+}
+
 # ============================================================================
 # Test Runner
 # ============================================================================
@@ -791,6 +926,7 @@ run_all_tests() {
         "empty_notes_state"
         "settings_screen"
         "summarize"
+        "export"
     )
 
     for test in "${tests[@]}"; do
@@ -811,6 +947,7 @@ list_tests() {
     echo "  empty_notes_state       - Empty state for new user"
     echo "  settings_screen         - Settings screen elements"
     echo "  summarize               - Generate AI summary for note"
+    echo "  export                  - Export note as PDF"
     echo ""
     echo "Usage:"
     echo "  $0 all                  - Run all tests"
