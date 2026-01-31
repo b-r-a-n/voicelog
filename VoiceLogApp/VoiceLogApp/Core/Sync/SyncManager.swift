@@ -1,6 +1,23 @@
 import Foundation
 import SwiftData
 
+/// Represents the result of the last sync attempt
+enum SyncResult: Sendable {
+    case success(timestamp: Date)
+    case failure(error: String, timestamp: Date)
+    case none
+}
+
+/// Observable wrapper for sync state that can be used from MainActor
+@MainActor
+final class SyncState: ObservableObject {
+    @Published var lastSyncResult: SyncResult = .none
+    @Published var isSyncing: Bool = false
+
+    static let shared = SyncState()
+    private init() {}
+}
+
 actor SyncManager {
     @MainActor static var shared: SyncManager = SyncManager(
         container: PersistenceController.shared.container
@@ -17,12 +34,19 @@ actor SyncManager {
     private let maxRetryAttempts = 3
     private let baseRetryDelay: TimeInterval = 1.0  // 1 second
 
+    // Sync state observable from UI
+    private let syncState: SyncState
+
     init(
         apiClient: APIClient = .shared,
-        container: ModelContainer
+        container: ModelContainer,
+        syncState: SyncState? = nil
     ) {
         self.apiClient = apiClient
         self.container = container
+        // Use provided syncState or default to shared instance
+        // Note: We access .shared later on MainActor to avoid race conditions
+        self.syncState = syncState ?? SyncState.shared
     }
 
     func syncIfNeeded() async throws {
@@ -44,47 +68,74 @@ actor SyncManager {
     private func performSync() async throws {
         isSyncing = true
         lastSyncAttempt = Date()
-        defer { isSyncing = false }
 
-        let metadataStore = LocalSyncMetadataStore(container: container)
-        let noteStore = LocalNoteStore(container: container)
-        let tagStore = LocalTagStore(container: container)
-
-        // Get last sync timestamp
-        let lastSync = try await metadataStore.getLastSyncTimestamp(for: "all")
-
-        // Get pending local changes
-        let pendingNotes = try await noteStore.getPendingChanges()
-
-        // Build sync request
-        let noteChanges = pendingNotes.map { note in
-            ClientNoteChange(
-                localId: note.localId,
-                title: note.title,
-                transcript: note.transcript,
-                transcriptChecksum: note.transcriptChecksum,
-                transcriptPreview: note.transcriptPreview,
-                duration: note.duration,
-                recordedAt: note.recordedAt,
-                isDeleted: note.isDeleted,
-                tagIds: note.tags.compactMap { $0.serverId }
-            )
+        // Update UI state
+        await MainActor.run {
+            syncState.isSyncing = true
         }
 
-        let syncRequest = SyncRequest(
-            since: lastSync,
-            notes: noteChanges,
-            tags: []
-        )
+        defer {
+            isSyncing = false
+            Task { @MainActor in
+                syncState.isSyncing = false
+            }
+        }
 
-        // Send to server with retry logic for transient failures
-        let response: SyncResponse = try await performSyncRequestWithRetry(syncRequest)
+        do {
+            let metadataStore = LocalSyncMetadataStore(container: container)
+            let noteStore = LocalNoteStore(container: container)
+            let tagStore = LocalTagStore(container: container)
 
-        // Apply server changes
-        try await applySync(response, noteStore: noteStore, tagStore: tagStore)
+            // Get last sync timestamp
+            let lastSync = try await metadataStore.getLastSyncTimestamp(for: "all")
 
-        // Update sync metadata
-        try await metadataStore.updateAfterSync(for: "all", timestamp: response.syncTimestamp)
+            // Get pending local changes
+            let pendingNotes = try await noteStore.getPendingChanges()
+
+            // Build sync request
+            let noteChanges = pendingNotes.map { note in
+                ClientNoteChange(
+                    localId: note.localId,
+                    title: note.title,
+                    transcript: note.transcript,
+                    transcriptChecksum: note.transcriptChecksum,
+                    transcriptPreview: note.transcriptPreview,
+                    duration: note.duration,
+                    recordedAt: note.recordedAt,
+                    isDeleted: note.isDeleted,
+                    tagIds: note.tags.compactMap { $0.serverId }
+                )
+            }
+
+            let syncRequest = SyncRequest(
+                since: lastSync,
+                notes: noteChanges,
+                tags: []
+            )
+
+            // Send to server with retry logic for transient failures
+            let response: SyncResponse = try await performSyncRequestWithRetry(syncRequest)
+
+            // Apply server changes
+            try await applySync(response, noteStore: noteStore, tagStore: tagStore)
+
+            // Update sync metadata
+            try await metadataStore.updateAfterSync(for: "all", timestamp: response.syncTimestamp)
+
+            // Record success
+            let successTimestamp = Date()
+            await MainActor.run {
+                syncState.lastSyncResult = .success(timestamp: successTimestamp)
+            }
+        } catch {
+            // Record failure
+            let failureTimestamp = Date()
+            let errorMessage = error.localizedDescription
+            await MainActor.run {
+                syncState.lastSyncResult = .failure(error: errorMessage, timestamp: failureTimestamp)
+            }
+            throw error
+        }
     }
 
     /// Performs sync request with exponential backoff retry for transient failures
