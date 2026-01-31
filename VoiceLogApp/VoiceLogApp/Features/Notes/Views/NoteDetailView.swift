@@ -126,16 +126,13 @@ struct NoteDetailView: View {
                 Text(error.localizedDescription)
             }
         }
-        .alert("Export Ready", isPresented: .init(
-            get: { viewModel.exportStatus != nil },
-            set: { if !$0 { viewModel.exportStatus = nil } }
+        .sheet(isPresented: .init(
+            get: { viewModel.exportedFileURL != nil },
+            set: { if !$0 { viewModel.exportedFileURL = nil } }
         )) {
-            Button("OK") {
-                viewModel.exportStatus = nil
-            }
-        } message: {
-            if let status = viewModel.exportStatus {
-                Text("Your \(status.format.uppercased()) export is ready. Export ID: \(status.exportId)")
+            if let url = viewModel.exportedFileURL {
+                ActivityView(activityItems: [url])
+                    .accessibilityIdentifier("export_share_sheet")
             }
         }
     }
@@ -145,6 +142,16 @@ struct NoteDetailView: View {
         let seconds = Int(duration) % 60
         return String(format: "%d:%02d", minutes, seconds)
     }
+}
+
+struct ActivityView: UIViewControllerRepresentable {
+    let activityItems: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: activityItems, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
 
 struct TagChip: View {
