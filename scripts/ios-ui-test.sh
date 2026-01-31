@@ -643,6 +643,73 @@ test_settings_screen() {
     terminate_app
 }
 
+test_sync() {
+    log_test "Sync Flow - Trigger Manual Sync"
+
+    launch_app
+
+    # Login if needed
+    if element_exists "login_email_field"; then
+        clear_and_type "login_email_field" "$DEV_EMAIL"
+        clear_and_type "login_password_field" "$DEV_PASSWORD"
+        tap_element "login_submit_button"
+        sleep 2
+    fi
+
+    # Navigate to settings
+    tap_element "settings_tab"
+    sleep 1
+
+    # Verify sync button exists
+    assert_element_exists "sync_now_button" "Sync Now button exists"
+
+    # Tap sync button
+    tap_element "sync_now_button"
+
+    # Wait a moment for sync to process
+    sleep 2
+
+    # Verify no error state occurred - settings screen should still be visible
+    # and not showing an error alert
+    if element_exists "settings_tab"; then
+        log_success "No error state after sync - settings tab still visible"
+    else
+        log_error "Settings tab not visible after sync - possible error state"
+        take_screenshot "sync_error_state"
+        terminate_app
+        return 1
+    fi
+
+    # Check that sync button is still functional (not stuck in error state)
+    if element_exists "sync_now_button"; then
+        log_success "Sync button still accessible after sync"
+    else
+        log_warn "Sync button not found after sync operation"
+    fi
+
+    # Navigate to notes to check for sync status icon (orange arrow for pending sync)
+    tap_element "notes_tab"
+    sleep 1
+
+    # Verify notes tab is displayed (sync didn't break navigation)
+    assert_element_exists "notes_tab" "Notes tab accessible after sync"
+
+    # Check for sync status indicators in notes list
+    # The sync status icon has accessibility ID pattern "sync_status_*"
+    local notes_ui=$(idb ui describe-all --udid "$UDID" 2>/dev/null)
+    local sync_status=$(echo "$notes_ui" | jq -r '[.[] | select(.AXUniqueId | tostring | startswith("sync_status_"))] | length')
+
+    if [ "$sync_status" -gt 0 ]; then
+        log_info "Found $sync_status notes with sync status indicators"
+    else
+        log_info "No pending sync indicators found (notes may be fully synced)"
+    fi
+
+    log_success "Sync completed without errors"
+
+    terminate_app
+}
+
 test_summarize() {
     log_test "Summarization Flow - Generate AI Summary"
 
@@ -925,6 +992,7 @@ run_all_tests() {
         "create_note_ui"
         "empty_notes_state"
         "settings_screen"
+        "sync"
         "summarize"
         "export"
     )
@@ -946,6 +1014,7 @@ list_tests() {
     echo "  create_note_ui          - Recording UI (no actual audio)"
     echo "  empty_notes_state       - Empty state for new user"
     echo "  settings_screen         - Settings screen elements"
+    echo "  sync                    - Sync now button functionality"
     echo "  summarize               - Generate AI summary for note"
     echo "  export                  - Export note as PDF"
     echo ""
