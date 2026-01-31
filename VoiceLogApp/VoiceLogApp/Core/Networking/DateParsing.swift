@@ -20,6 +20,13 @@ enum DateParsing {
         return formatter
     }()
 
+    private static let plainDateTimeWithFractional: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter
+    }()
+
     /// Parse a date string with fallback support for various ISO8601 formats
     static func parseDate(_ dateString: String) -> Date? {
         // Try with fractional seconds and timezone
@@ -28,6 +35,10 @@ enum DateParsing {
         }
         // Try without fractional seconds but with timezone
         if let date = iso8601Standard.date(from: dateString) {
+            return date
+        }
+        // Try with fractional seconds but without timezone (backend returns this format)
+        if let date = plainDateTimeWithFractional.date(from: dateString) {
             return date
         }
         // Try without timezone (backend sometimes returns dates without Z suffix)
