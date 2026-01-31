@@ -41,6 +41,13 @@ actor APIClient {
         let _: EmptyResponse = try await executeWithRetry(request: request, endpoint: endpoint)
     }
 
+    /// Downloads raw file data (not JSON) from the given endpoint
+    /// - Returns: Tuple of (file data, optional filename from Content-Disposition header)
+    func downloadFile(endpoint: APIEndpoint) async throws -> (Data, String?) {
+        let request = try await buildRequest(endpoint: endpoint, body: nil)
+        return try await executeFileDownloadWithRetry(request: request, endpoint: endpoint)
+    }
+
     func login(email: String, password: String) async throws -> AuthToken {
         var request = URLRequest(url: APIEndpoint.login.url)
         request.httpMethod = HTTPMethod.post.rawValue
@@ -100,6 +107,80 @@ actor APIClient {
 
             return try await execute(request: newRequest)
         }
+    }
+
+    private func executeFileDownloadWithRetry(
+        request: URLRequest,
+        endpoint: APIEndpoint
+    ) async throws -> (Data, String?) {
+        do {
+            return try await executeFileDownload(request: request)
+        } catch APIError.unauthorized(_) where endpoint.requiresAuth {
+            let newToken = try await refreshToken()
+
+            var newRequest = request
+            newRequest.setValue("Bearer \(newToken.accessToken)", forHTTPHeaderField: "Authorization")
+
+            return try await executeFileDownload(request: newRequest)
+        }
+    }
+
+    private func executeFileDownload(request: URLRequest) async throws -> (Data, String?) {
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw APIError.networkError(error)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.unknown
+        }
+
+        switch httpResponse.statusCode {
+        case 200..<300:
+            let filename = extractFilename(from: httpResponse)
+            return (data, filename)
+
+        case 401:
+            let errorResponse = try? decoder.decode(APIErrorResponse.self, from: data)
+            throw APIError.unauthorized(errorResponse?.detail)
+
+        case 403:
+            let errorResponse = try? decoder.decode(APIErrorResponse.self, from: data)
+            throw APIError.forbidden(errorResponse?.detail ?? "Access denied")
+
+        case 404:
+            throw APIError.notFound
+
+        case 500..<600:
+            throw APIError.serverError(httpResponse.statusCode)
+
+        default:
+            throw APIError.unknown
+        }
+    }
+
+    private func extractFilename(from response: HTTPURLResponse) -> String? {
+        guard let contentDisposition = response.value(forHTTPHeaderField: "Content-Disposition") else {
+            return nil
+        }
+
+        // Parse Content-Disposition header for filename
+        // Handles: attachment; filename="example.pdf" or attachment; filename=example.pdf
+        let components = contentDisposition.components(separatedBy: ";")
+        for component in components {
+            let trimmed = component.trimmingCharacters(in: .whitespaces)
+            if trimmed.lowercased().hasPrefix("filename=") {
+                var filename = String(trimmed.dropFirst("filename=".count))
+                // Remove surrounding quotes if present
+                if filename.hasPrefix("\"") && filename.hasSuffix("\"") {
+                    filename = String(filename.dropFirst().dropLast())
+                }
+                return filename.isEmpty ? nil : filename
+            }
+        }
+        return nil
     }
 
     private func execute<T: Decodable>(request: URLRequest) async throws -> T {
