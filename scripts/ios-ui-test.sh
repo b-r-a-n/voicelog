@@ -644,7 +644,7 @@ test_settings_screen() {
 }
 
 test_sync() {
-    log_test "Sync Flow - Trigger Manual Sync"
+    log_test "Sync Flow - Trigger Manual Sync and Verify Status UI"
 
     launch_app
 
@@ -666,8 +666,25 @@ test_sync() {
     # Tap sync button
     tap_element "sync_now_button"
 
-    # Wait a moment for sync to process
-    sleep 2
+    # Wait for sync to complete (watch for progress indicator to disappear)
+    log_info "Waiting for sync to complete..."
+    local sync_timeout=10
+    for ((i=0; i<sync_timeout; i++)); do
+        # Check if sync is still in progress (button may show loading state)
+        sleep 1
+        if element_exists "sync_now_button"; then
+            # Check if we can tap it (not disabled due to syncing)
+            local btn=$(get_element "sync_now_button")
+            local enabled=$(echo "$btn" | jq -r '.enabled // true')
+            if [ "$enabled" = "true" ]; then
+                log_info "Sync completed (button re-enabled)"
+                break
+            fi
+        fi
+    done
+
+    # Allow UI to update after sync completion
+    sleep 1
 
     # Verify no error state occurred - settings screen should still be visible
     # and not showing an error alert
@@ -685,6 +702,30 @@ test_sync() {
         log_success "Sync button still accessible after sync"
     else
         log_warn "Sync button not found after sync operation"
+    fi
+
+    # Verify sync status UI elements after successful sync
+    # The settings_last_sync_time element should appear after a successful sync
+    if element_exists "settings_last_sync_time"; then
+        log_success "Last sync time is displayed (settings_last_sync_time)"
+
+        # Get the last sync time text to verify it contains a time
+        local sync_time_element=$(get_element "settings_last_sync_time")
+        local sync_time_label=$(echo "$sync_time_element" | jq -r '.label // ""')
+        log_info "Last sync time label: $sync_time_label"
+    else
+        # If sync succeeded but no last sync time shown, check for error banner
+        if element_exists "sync_error_banner"; then
+            log_error "Sync error banner is displayed - sync may have failed"
+            local error_element=$(get_element "sync_error_banner")
+            local error_text=$(echo "$error_element" | jq -r '.label // ""')
+            log_error "Error: $error_text"
+            take_screenshot "sync_error_banner"
+            terminate_app
+            return 1
+        else
+            log_warn "Last sync time not displayed yet - sync may still be processing"
+        fi
     fi
 
     # Navigate to notes to check for sync status icon (orange arrow for pending sync)
@@ -1084,7 +1125,7 @@ list_tests() {
     echo "  create_note_ui          - Recording UI (no actual audio)"
     echo "  empty_notes_state       - Empty state for new user"
     echo "  settings_screen         - Settings screen elements"
-    echo "  sync                    - Sync now button functionality"
+    echo "  sync                    - Sync now button and sync status UI"
     echo "  summarize               - Generate AI summary for note"
     echo "  export                  - Export note as PDF"
     echo "  tags                    - View tags on note detail"

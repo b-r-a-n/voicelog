@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @ObservedObject var authService: AuthService
+    @StateObject private var syncState = SyncState.shared
     @State private var showLogoutConfirmation = false
 
     var body: some View {
@@ -29,14 +30,44 @@ struct SettingsView: View {
                 }
 
                 Section("Sync") {
+                    // Show error banner if last sync failed
+                    if case .failure(let error, _) = syncState.lastSyncResult {
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.orange)
+                            Text("Sync failed: \(error)")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityIdentifier("sync_error_banner")
+                    }
+
                     Button {
                         Task {
                             try? await SyncManager.shared.forceSync()
                         }
                     } label: {
-                        Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
+                        HStack {
+                            Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
+                            if syncState.isSyncing {
+                                Spacer()
+                                ProgressView()
+                            }
+                        }
                     }
+                    .disabled(syncState.isSyncing)
                     .accessibilityIdentifier("sync_now_button")
+
+                    // Show last successful sync time
+                    if case .success(let timestamp) = syncState.lastSyncResult {
+                        HStack {
+                            Text("Last synced")
+                            Spacer()
+                            Text(timestamp, style: .relative)
+                                .foregroundStyle(.secondary)
+                        }
+                        .accessibilityIdentifier("settings_last_sync_time")
+                    }
                 }
 
                 Section("About") {
