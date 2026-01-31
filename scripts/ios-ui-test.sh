@@ -643,6 +643,119 @@ test_settings_screen() {
     terminate_app
 }
 
+test_summarize() {
+    log_test "Summarization Flow - Generate AI Summary"
+
+    launch_app
+
+    # Login if needed
+    if element_exists "login_email_field"; then
+        clear_and_type "login_email_field" "$DEV_EMAIL"
+        clear_and_type "login_password_field" "$DEV_PASSWORD"
+        tap_element "login_submit_button"
+        sleep 2
+    fi
+
+    # Navigate to notes
+    tap_element "notes_tab"
+    sleep 2
+
+    # Check if there are any notes
+    if element_exists "empty_notes_view"; then
+        log_warn "No notes available - skipping summarize test"
+        log_warn "Create a note with transcript to test summarization"
+        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+        terminate_app
+        return 0
+    fi
+
+    # Get first note and tap it
+    local notes_ui=$(idb ui describe-all --udid "$UDID" 2>/dev/null)
+    local first_note=$(echo "$notes_ui" | jq -r '[.[] | select(.AXUniqueId | tostring | startswith("note_row_"))] | .[0].AXUniqueId // empty')
+
+    if [ -z "$first_note" ]; then
+        log_warn "No notes found in list - skipping summarize test"
+        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+        terminate_app
+        return 0
+    fi
+
+    tap_element "$first_note"
+    sleep 1
+
+    # Verify we're on note detail
+    assert_element_exists "note_detail_transcript" "Note detail transcript is displayed"
+
+    # Open the menu
+    assert_element_exists "note_detail_menu_button" "Menu button exists"
+    tap_element "note_detail_menu_button"
+    sleep 0.5
+
+    # Tap Generate Summary
+    # Note: Menu items may not have accessibility IDs in SwiftUI menus,
+    # so we look for the button by label text
+    local menu_ui=$(idb ui describe-all --udid "$UDID" 2>/dev/null)
+    local summary_button=$(echo "$menu_ui" | jq -r '[.[] | select(.label == "Generate Summary" or .AXUniqueId == "generate_summary_button")] | .[0]')
+
+    if [ -z "$summary_button" ] || [ "$summary_button" = "null" ]; then
+        log_error "Generate Summary button not found in menu"
+        take_screenshot "summarize_menu_missing"
+        terminate_app
+        return 1
+    fi
+
+    # Get coordinates and tap
+    local frame=$(echo "$summary_button" | jq -r '.frame')
+    local x=$(echo "$frame" | jq -r '(.x + (.width / 2)) | floor')
+    local y=$(echo "$frame" | jq -r '(.y + (.height / 2)) | floor')
+
+    log_info "Tapping 'Generate Summary' at ($x, $y)..."
+    idb ui tap --udid "$UDID" "$x" "$y"
+    sleep 1
+
+    # Wait for loading indicator (may appear briefly) then for summary
+    # Give LLM API time to respond (increased timeout)
+    local summary_timeout=30
+    log_info "Waiting for summary to generate (up to ${summary_timeout}s)..."
+
+    local summary_found=false
+    for ((i=0; i<summary_timeout; i++)); do
+        # Check if loading indicator is visible
+        if element_exists "note_detail_loading"; then
+            log_info "Summarization in progress..."
+        fi
+
+        # Check if summary appeared
+        if element_exists "note_detail_summary"; then
+            summary_found=true
+            break
+        fi
+
+        sleep 1
+    done
+
+    if [ "$summary_found" = true ]; then
+        log_success "Summary generated and displayed"
+    else
+        log_error "Summary did not appear within ${summary_timeout} seconds"
+        take_screenshot "summarize_timeout"
+        terminate_app
+        return 1
+    fi
+
+    # Verify summary text is not empty
+    local summary_element=$(get_element "note_detail_summary")
+    local summary_text=$(echo "$summary_element" | jq -r '.label // .value // ""')
+
+    if [ -n "$summary_text" ] && [ "$summary_text" != "" ]; then
+        log_success "Summary contains text: ${summary_text:0:50}..."
+    else
+        log_warn "Summary element exists but text may be empty"
+    fi
+
+    terminate_app
+}
+
 # ============================================================================
 # Test Runner
 # ============================================================================
@@ -677,6 +790,7 @@ run_all_tests() {
         "create_note_ui"
         "empty_notes_state"
         "settings_screen"
+        "summarize"
     )
 
     for test in "${tests[@]}"; do
@@ -696,6 +810,7 @@ list_tests() {
     echo "  create_note_ui          - Recording UI (no actual audio)"
     echo "  empty_notes_state       - Empty state for new user"
     echo "  settings_screen         - Settings screen elements"
+    echo "  summarize               - Generate AI summary for note"
     echo ""
     echo "Usage:"
     echo "  $0 all                  - Run all tests"

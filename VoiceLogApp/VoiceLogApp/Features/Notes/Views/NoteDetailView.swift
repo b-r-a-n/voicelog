@@ -81,6 +81,7 @@ struct NoteDetailView: View {
                         Label("Generate Summary", systemImage: "sparkles")
                     }
                     .disabled(viewModel.isSummarizing)
+                    .accessibilityIdentifier("generate_summary_button")
 
                     Divider()
 
@@ -104,10 +105,13 @@ struct NoteDetailView: View {
                 } label: {
                     if viewModel.isSummarizing || viewModel.isExporting {
                         ProgressView()
+                            .accessibilityIdentifier("note_detail_loading")
                     } else {
                         Image(systemName: "ellipsis.circle")
+                            .accessibilityIdentifier("note_detail_menu_button")
                     }
                 }
+                .accessibilityIdentifier("note_detail_menu")
             }
         }
         .alert("Error", isPresented: .init(
