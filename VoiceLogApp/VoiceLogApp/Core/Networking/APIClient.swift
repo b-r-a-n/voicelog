@@ -114,6 +114,15 @@ actor APIClient {
             throw APIError.unknown
         }
 
+        // DEBUG: Log raw response for auth debugging
+        #if DEBUG
+        let rawJSON = String(data: data, encoding: .utf8) ?? "<non-UTF8 data>"
+        print("[APIClient DEBUG] \(request.httpMethod ?? "?") \(request.url?.path ?? "?")")
+        print("[APIClient DEBUG] Status: \(httpResponse.statusCode)")
+        print("[APIClient DEBUG] Response type: \(T.self)")
+        print("[APIClient DEBUG] Raw JSON: \(rawJSON)")
+        #endif
+
         switch httpResponse.statusCode {
         case 200..<300:
             if T.self == EmptyResponse.self {
@@ -121,8 +130,30 @@ actor APIClient {
             }
             do {
                 return try decoder.decode(T.self, from: data)
-            } catch {
-                throw APIError.decodingFailed(error)
+            } catch let decodingError {
+                // DEBUG: Log detailed decoding error
+                #if DEBUG
+                print("[APIClient DEBUG] Decoding failed for type: \(T.self)")
+                if let error = decodingError as? DecodingError {
+                    switch error {
+                    case .keyNotFound(let key, let context):
+                        print("[APIClient DEBUG] Missing key: '\(key.stringValue)' at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+                    case .typeMismatch(let type, let context):
+                        print("[APIClient DEBUG] Type mismatch: expected \(type) at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+                        print("[APIClient DEBUG] Debug description: \(context.debugDescription)")
+                    case .valueNotFound(let type, let context):
+                        print("[APIClient DEBUG] Value not found: expected \(type) at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+                    case .dataCorrupted(let context):
+                        print("[APIClient DEBUG] Data corrupted at path: \(context.codingPath.map { $0.stringValue }.joined(separator: "."))")
+                        print("[APIClient DEBUG] Debug description: \(context.debugDescription)")
+                    @unknown default:
+                        print("[APIClient DEBUG] Unknown decoding error: \(error)")
+                    }
+                } else {
+                    print("[APIClient DEBUG] Non-DecodingError: \(decodingError)")
+                }
+                #endif
+                throw APIError.decodingFailed(decodingError)
             }
 
         case 400:
