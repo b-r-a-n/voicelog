@@ -958,6 +958,75 @@ test_export() {
     terminate_app
 }
 
+test_tags() {
+    log_test "Tags Display - View tags on note detail"
+
+    launch_app
+
+    # Login if needed
+    if element_exists "login_email_field"; then
+        clear_and_type "login_email_field" "$DEV_EMAIL"
+        clear_and_type "login_password_field" "$DEV_PASSWORD"
+        tap_element "login_submit_button"
+        sleep 2
+    fi
+
+    # Navigate to notes
+    tap_element "notes_tab"
+    sleep 2
+
+    # Check if there are any notes
+    if element_exists "empty_notes_view"; then
+        log_warn "No notes available - skipping tags test"
+        log_warn "Create a note with tags to test tag display"
+        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+        terminate_app
+        return 0
+    fi
+
+    # Get first note and tap it
+    local notes_ui=$(idb ui describe-all --udid "$UDID" 2>/dev/null)
+    local first_note=$(echo "$notes_ui" | jq -r '[.[] | select(.AXUniqueId | tostring | startswith("note_row_"))] | .[0].AXUniqueId // empty')
+
+    if [ -z "$first_note" ]; then
+        log_warn "No notes found in list - skipping tags test"
+        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+        terminate_app
+        return 0
+    fi
+
+    tap_element "$first_note"
+    sleep 1
+
+    # Verify we're on note detail
+    assert_element_exists "note_detail_transcript" "Note detail transcript is displayed"
+
+    # Check for tags section
+    # Tags may or may not be present depending on whether the note has tags
+    if element_exists "note_detail_tags_section"; then
+        log_success "Tags section is displayed"
+
+        # Verify tags container exists
+        assert_element_exists "note_detail_tags" "Tags container is displayed"
+
+        # Look for any tag chips
+        local detail_ui=$(idb ui describe-all --udid "$UDID" 2>/dev/null)
+        local tag_chips=$(echo "$detail_ui" | jq -r '[.[] | select(.AXUniqueId | tostring | startswith("tag_chip_"))] | length')
+
+        if [ "$tag_chips" -gt 0 ]; then
+            log_success "Found $tag_chips tag chip(s) displayed"
+        else
+            log_warn "Tags section exists but no tag chips found"
+        fi
+    else
+        log_warn "No tags section found - note may not have tags assigned"
+        log_info "Tags UI is implemented; test skipped because current note has no tags"
+        TESTS_SKIPPED=$((TESTS_SKIPPED + 1))
+    fi
+
+    terminate_app
+}
+
 # ============================================================================
 # Test Runner
 # ============================================================================
@@ -995,6 +1064,7 @@ run_all_tests() {
         "sync"
         "summarize"
         "export"
+        "tags"
     )
 
     for test in "${tests[@]}"; do
@@ -1017,6 +1087,7 @@ list_tests() {
     echo "  sync                    - Sync now button functionality"
     echo "  summarize               - Generate AI summary for note"
     echo "  export                  - Export note as PDF"
+    echo "  tags                    - View tags on note detail"
     echo ""
     echo "Usage:"
     echo "  $0 all                  - Run all tests"
