@@ -11,6 +11,10 @@ actor APIClient {
     private var isRefreshing = false
     private var refreshContinuations: [CheckedContinuation<AuthToken, Error>] = []
 
+    // Retry configuration
+    private let maxRetryAttempts = 3
+    private let baseRetryDelay: UInt64 = 1_000_000_000 // 1 second in nanoseconds
+
     init(
         session: URLSession = .shared,
         keychainManager: KeychainManager = .shared
@@ -95,33 +99,63 @@ actor APIClient {
 
     private func executeWithRetry<T: Decodable>(
         request: URLRequest,
-        endpoint: APIEndpoint
+        endpoint: APIEndpoint,
+        attempt: Int = 1
     ) async throws -> T {
         do {
             return try await execute(request: request)
         } catch APIError.unauthorized(_) where endpoint.requiresAuth {
+            // Token refresh is separate from retry logic
             let newToken = try await refreshToken()
 
             var newRequest = request
             newRequest.setValue("Bearer \(newToken.accessToken)", forHTTPHeaderField: "Authorization")
 
             return try await execute(request: newRequest)
+        } catch let error where shouldRetry(error: error, attempt: attempt) {
+            // Exponential backoff: 1s, 2s, 4s
+            let delay = baseRetryDelay * UInt64(1 << (attempt - 1))
+            try await Task.sleep(nanoseconds: delay)
+
+            return try await executeWithRetry(request: request, endpoint: endpoint, attempt: attempt + 1)
+        }
+    }
+
+    /// Determines if an error is retryable (network errors and 5xx server errors)
+    private func shouldRetry(error: Error, attempt: Int) -> Bool {
+        guard attempt < maxRetryAttempts else { return false }
+
+        switch error {
+        case APIError.networkError:
+            return true
+        case APIError.serverError:
+            return true
+        default:
+            return false
         }
     }
 
     private func executeFileDownloadWithRetry(
         request: URLRequest,
-        endpoint: APIEndpoint
+        endpoint: APIEndpoint,
+        attempt: Int = 1
     ) async throws -> (Data, String?) {
         do {
             return try await executeFileDownload(request: request)
         } catch APIError.unauthorized(_) where endpoint.requiresAuth {
+            // Token refresh is separate from retry logic
             let newToken = try await refreshToken()
 
             var newRequest = request
             newRequest.setValue("Bearer \(newToken.accessToken)", forHTTPHeaderField: "Authorization")
 
             return try await executeFileDownload(request: newRequest)
+        } catch let error where shouldRetry(error: error, attempt: attempt) {
+            // Exponential backoff: 1s, 2s, 4s
+            let delay = baseRetryDelay * UInt64(1 << (attempt - 1))
+            try await Task.sleep(nanoseconds: delay)
+
+            return try await executeFileDownloadWithRetry(request: request, endpoint: endpoint, attempt: attempt + 1)
         }
     }
 
