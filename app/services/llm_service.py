@@ -3,11 +3,13 @@ from abc import ABC, abstractmethod
 from typing import Optional
 
 # LLM Provider configuration
-LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "anthropic")  # anthropic, openai, or ollama
+LLM_PROVIDER = os.environ.get("LLM_PROVIDER", "anthropic")  # anthropic, openai, ollama, or groq
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.2")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+GROQ_MODEL = os.environ.get("GROQ_MODEL", "llama-3.3-70b-versatile")
 
 DEFAULT_SUMMARY_PROMPT = """Please provide a concise summary of the following voice dictation transcript.
 Focus on the main topics, key points, and any action items mentioned.
@@ -90,6 +92,31 @@ class OllamaProvider(LLMProvider):
         return response.json()["response"]
 
 
+class GroqProvider(LLMProvider):
+    def __init__(self):
+        if not GROQ_API_KEY:
+            raise ValueError("GROQ_API_KEY environment variable is required")
+        from openai import OpenAI
+        self.client = OpenAI(
+            api_key=GROQ_API_KEY,
+            base_url="https://api.groq.com/openai/v1"
+        )
+        self.model = GROQ_MODEL
+
+    async def summarize(self, transcript: str, custom_prompt: Optional[str] = None) -> str:
+        prompt = custom_prompt or DEFAULT_SUMMARY_PROMPT
+        prompt = prompt.replace("{transcript}", transcript)
+
+        response = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=1024,
+        )
+        return response.choices[0].message.content
+
+
 class LLMService:
     def __init__(self):
         self._provider: Optional[LLMProvider] = None
@@ -107,6 +134,8 @@ class LLMService:
             return OpenAIProvider()
         elif LLM_PROVIDER == "ollama":
             return OllamaProvider()
+        elif LLM_PROVIDER == "groq":
+            return GroqProvider()
         else:
             raise ValueError(f"Unknown LLM provider: {LLM_PROVIDER}")
 

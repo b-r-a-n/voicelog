@@ -113,6 +113,7 @@ start_backend() {
     JWT_SECRET="${DEV_JWT_SECRET}" \
     DATABASE_URL="sqlite:///./dev.db" \
     OPENAI_API_KEY="${OPENAI_API_KEY:-dummy-key-for-dev}" \
+    GROQ_API_KEY="${GROQ_API_KEY:-}" \
     python3 -m uvicorn app.main:app --host 0.0.0.0 --port "${BACKEND_PORT}" &
 
     BACKEND_PID=$!
