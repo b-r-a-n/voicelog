@@ -61,9 +61,12 @@ struct NoteDetailView: View {
                         FlowLayout(spacing: 8) {
                             ForEach(viewModel.note.tags) { tag in
                                 TagChip(tag: tag)
+                                    .accessibilityIdentifier("tag_chip_\(tag.id)")
                             }
                         }
+                        .accessibilityIdentifier("note_detail_tags")
                     }
+                    .accessibilityIdentifier("note_detail_tags_section")
                 }
             }
             .padding()
